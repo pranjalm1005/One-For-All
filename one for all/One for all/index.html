@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/x-icon" href="assets/favicon.png">
+    <link rel="stylesheet" href="utils/style.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.9.1/font/bootstrap-icons.css">
+    <title>ONE FOR ALL</title>
+  </head>
+
+  <body>
+    <div class="container">
+
+      <div class="msg-header">
+        <div class="container1">
+            <img src="assets/logo.png" class="msgimg">
+            <div class="active ">
+                <p>One For All</p>
+            </div>
+        </div>
+      </div>
+
+
+      <div class="chat-page">
+
+        <div class="msg-inbox">
+
+            <div class="chats">
+
+              <div id="chat-history" class="msg-page">
+                <div class="background-img">
+                  <img src="assets/image.jpeg" style="height: 450px; width: 450px;"/>
+                </div>
+              </div>
+
+            </div>
+
+            <div class="msg-bottom">
+              <form id="form">
+                <div class="input-group">
+                  <input id="prompt" type="text" class="form-control" placeholder="Write your query...">
+                  <div class="input-group-append ">
+                      <button type="button" id="click_to_record" class="input-group-text send-icon">
+                        <i class="bi bi-mic"></i>
+                      </button>
+                      <button type="button" id="stop_speech" class="input-group-text send-icon">
+                        <i class="bi bi-stop"></i>
+                      </button>
+                      <button type="submit" id="submit" class="input-group-text send-icon">
+                        <i class="bi bi-send "></i>
+                      </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import {
+        getGenerativeModel,
+        updateUI,
+      } from "./utils/script.js";
+
+      const promptInput = document.querySelector("#prompt");
+      const historyElement = document.querySelector("#chat-history");
+      const synth = window.speechSynthesis;
+      let chat;
+
+      function unformatText(text) {
+        let unformatText = '';
+        for( let char of text){
+          if(char == '*'){
+            unformatText += ' '
+          }
+          else{
+            unformatText += char;
+          }
+        }
+        return unformatText;
+      }
+
+      //Function to stop speech
+      stop_speech.addEventListener('click', function(){
+        synth.cancel();
+      })
+
+      // This function adds STT capabilities
+      click_to_record.addEventListener('click',function(){
+                synth.cancel();
+                var speech = true;
+                window.SpeechRecognition = window.webkitSpeechRecognition;
+
+                const recognition = new SpeechRecognition();
+                recognition.interimResults = true;
+
+                recognition.addEventListener('result', e => {
+                    const transcript = Array.from(e.results)
+                        .map(result => result[0])
+                        .map(result => result.transcript)
+                        .join('')
+                    promptInput.value = transcript;
+                    console.log(transcript);
+                });
+
+                recognition.addEventListener('end', () => {
+                  setTimeout(() => {
+                    const button = document.getElementById('submit');
+                    button.click();
+                  }, 1000)
+                })
+                
+                if (speech == true) {
+                    recognition.start();
+                }
+        })
+
+      // Form submission
+      document
+        .querySelector("#form")
+        .addEventListener("submit", async (event) => {  
+          event.preventDefault();
+          synth.cancel();
+
+          if (!chat) {
+            const model = await getGenerativeModel({ model: "gemini-pro" });
+            chat = model.startChat({
+              generationConfig: {
+                maxOutputTokens: 1000,
+              },
+            });
+          }
+          const userMessage = promptInput.value;
+          promptInput.value = "";
+
+          // Create UI for the new user / assistant messages pair
+          historyElement.innerHTML += `<div class="outgoing-chats">
+                                        <div class="outgoing-msg">
+                                          <div class="outgoing-chats-msg model-user">
+                                            <blockquote>${userMessage}</blockquote>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div class="received-chats">
+                                        <div class="received-msg">
+                                          <div class="received-msg-inbox model-role">
+                                            <blockquote></blockquote>
+                                          </div>
+                                        </div>
+                                      </div>`;
+
+          const userPara = document.querySelectorAll(
+            ".model-user > blockquote",
+          );
+          const firstSection = userPara[userPara.length - 1];
+          firstSection.scrollIntoView();
+
+          const resultEls = document.querySelectorAll(
+            ".model-role > blockquote",
+          );
+          await updateUI(
+            resultEls[resultEls.length - 1],
+            async () => {
+              const result = await chat.sendMessageStream(userMessage);
+              const response = await result.response;
+              const text = unformatText(response.text());
+              let utterance = new SpeechSynthesisUtterance(text);
+              utterance.rate = 1.25;
+              synth.speak(utterance);
+              return result;
+            },
+            true,
+          );
+          
+          const secondSection = resultEls[resultEls.length - 1];
+          secondSection.scrollIntoView();
+          
+        });
+    </script>
+  </body>
+</html>
